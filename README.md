@@ -1,6 +1,6 @@
 # API protection with Kong API Gateway and Keycloak integration 
 
-This repo shows how to protect your APIs using the Kong API Gateway working as PEP proxy with a Keycloak integration for authentication and authorization of incoming requests.
+This repo shows how to protect your APIs using the Kong API Gateway working as PEP proxy with a Keycloak integration for authentication and authorization of incoming requests. For example, you can protect [platform components](https://github.com/N5GEH/n5geh.platform) as described in [this publication](https://doi.org/10.1016/j.autcon.2022.104622).
 
 ## 1. Install 
 
