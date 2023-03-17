@@ -1,6 +1,15 @@
+local typedefs = require "kong.db.schema.typedefs"
+
 return {
-  no_consumer = true,
+  name = "query-checker",
   fields = {
-    path = { type = "string", required = true },
+    {
+      config = {
+        type = "record",
+        fields = {
+          {path = {type = "string", required = true}}
+        }
+      }
+    }
   }
 }

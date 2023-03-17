@@ -46,8 +46,7 @@ services:
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_PROXY_ACCESS_LOG: /dev/stdout
       KONG_PROXY_ERROR_LOG: /dev/stderr
-      # Allow plugins to be used. The plugin name is your JS file name e.g. hello.js
-      KONG_PLUGINS: bundled,oidc,multi-tenancy,query-checker,rbac
+      KONG_PLUGINS: bundled,multi-tenancy, rbac, scope-checker, query-checker
       KONG_PROXY_LISTEN:     0.0.0.0:8000, 0.0.0.0:8443 ssl
       KONG_ADMIN_LISTEN:     0.0.0.0:8001, 0.0.0.0:8444 ssl
     ports:
