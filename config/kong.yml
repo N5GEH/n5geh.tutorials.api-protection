@@ -5,4 +5,4 @@ services:
   - name: example-service
     url: http://localhost:1026/v2/entites
     plugins:
-      - name: multi-tenancy,query-checker,rbac
+      - name: multi-tenancy, rbac, scope-checker, query-checker, oidc
