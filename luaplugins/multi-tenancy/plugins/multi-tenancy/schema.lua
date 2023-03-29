@@ -1,6 +1,17 @@
+local typedefs = require "kong.db.schema.typedefs"
+
 return {
-  no_consumer = true,
+  name = "multi-tenancy",
   fields = {
-    tenant_name = { type = "string", required = true , default = "fiware-service" }
+    {
+      config = {
+        type = "record",
+        fields = {
+          {
+            tenant_name = {type = "string", required = true, default = "fiware-service"}
+          }
+        }
+      }
+    }
   }
 }
