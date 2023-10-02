@@ -2,18 +2,19 @@
 
 This repo shows how to protect your APIs using the Kong API Gateway working as PEP proxy with a Keycloak integration for authentication and authorization of incoming requests.
 
+- [API protection with Kong API Gateway and Keycloak integration](#api-protection-with-kong-api-gateway-and-keycloak-integration)
   - [1. Install](#1-install)
   - [2. Setup](#2-setup)
   - [3. Kong/Konga Configurations](#3-kongkonga-configurations)
     - [3.1 Creation of a Service](#31-creation-of-a-service)
     - [3.2 Creation of Routes](#32-creation-of-routes)
-    - [3.3 Keycloak configs for Kong](#33-keycloak-configs-for-kong)
+    - [3.3 Open ID Connect (oidc) plugin for authentication with Keycloak](#33-open-id-connect-oidc-plugin-for-authentication-with-keycloak)
     - [3.4 Configure custom plugins](#34-configure-custom-plugins)
-      - [3.4.1 Configuring Milti-Tenancy Plugin](#341-configuring-milti-tenancy-plugin)
+      - [3.4.1 Configuring Multi-Tenancy Plugin](#341-configuring-multi-tenancy-plugin)
       - [3.4.2 Configuring RBAC Plugin](#342-configuring-rbac-plugin)
       - [3.4.3 Configuring scope-checker Plugin](#343-configuring-scope-checker-plugin)
       - [3.4.4 Configuring Query-Checker plugin](#344-configuring-query-checker-plugin)
-  - [4. Keycloak Configuration](#4-keycloak-configurations)
+  - [4. Keycloak Configurations](#4-keycloak-configurations)
   - [Testing](#testing)
   - [Docs](#docs)
 
@@ -60,7 +61,9 @@ Create a new service by clicking the Services button in the left navigation bar.
 Creating new routes for a given service is fairly simple. Just like creating a new service, a route can be added/created for a service. So click on the Routes tab in the services page (after clicking on a service), in this example orion service. Fill in details for Paths, e.g. */v2/entities* and headers in case you need to check any particular headers. 
 *Note* : fiware-service header will be checked using the multi-tenancy plugin, so there is no need to enter it here.
 
-### 3.3 Keycloak configs for Kong
+### 3.3 Open ID Connect (oidc) plugin for authentication with Keycloak
+
+In this excample, a global plugin will be used in order to validate every incoming request against this plugin. In this case, every request needs to be authenticated against a Keycloak server.
 
 1. Click on the 'Plugins' tab in the main navigation bar on the left side.
 2. Click on 'ADD GLOBAL PLUGINS'.
@@ -76,7 +79,7 @@ To add any plugin, we follow the same procedure as done before with the OIDC plu
 - Go to the orion service created in Step 3.1, click on the plugins tab on the left side under the selected service.
 - Click on ADD PLUGIN option on the right side, then click on others and select multi-tenancy plugin in the option. There is no need to fill any values as the plugin matches fiware-service header to the same in the Auth Token.
 
-#### 3.4.1 Configuring Milti-Tenancy Plugin
+#### 3.4.1 Configuring Multi-Tenancy Plugin
 
 You can add the plugin at global, service or at route level. Select the plugin in the 'Add Plugin' section. 
 
