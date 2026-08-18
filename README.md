@@ -1,200 +1,350 @@
-# API protection with Kong API Gateway and Keycloak integration 
+# API Protection with Kong and Keycloak for the N5GEH Platform
 
-This repo shows how to protect your APIs using the Kong API Gateway working as PEP proxy with a Keycloak integration for authentication and authorization of incoming requests.
+This repository contains the **API protection framework** for the N5GEH
+platform. It shows how to protect the platform's northbound REST APIs (Orion
+Context Broker, IoT-Agent, QuantumLeap) using **Kong** as an API gateway / PEP
+proxy with **Keycloak** for authentication and authorization.
 
-- [API protection with Kong API Gateway and Keycloak integration](#api-protection-with-kong-api-gateway-and-keycloak-integration)
-  - [1. Install](#1-install)
-  - [2. Setup](#2-setup)
-  - [3. Kong/Konga Configurations](#3-kongkonga-configurations)
-    - [3.1 Creation of a Service](#31-creation-of-a-service)
-    - [3.2 Creation of Routes](#32-creation-of-routes)
-    - [3.3 Open ID Connect (OIDC) plugin for authentication with Keycloak](#33-open-id-connect-oidc-plugin-for-authentication-with-keycloak)
-    - [3.4 Configure custom plugins](#34-configure-custom-plugins)
-      - [3.4.1 Configuring Multi-Tenancy Plugin](#341-configuring-multi-tenancy-plugin)
-      - [3.4.2 Configuring RBAC Plugin](#342-configuring-rbac-plugin)
-      - [3.4.3 Configuring scope-checker Plugin](#343-configuring-scope-checker-plugin)
-      - [3.4.4 Configuring Query-Checker plugin](#344-configuring-query-checker-plugin)
-  - [4. Keycloak Configurations](#4-keycloak-configurations)
-  - [Testing](#testing)
-  - [Docs](#docs)
+The framework enforces:
 
+- **OpenID Connect (OIDC)** authentication against Keycloak.
+- **Multi-tenancy** (the `fiware-service` header must match the tenant encoded
+  in the JWT).
+- **Role-Based Access Control** (the HTTP method must match the caller's role).
+- **TLS** termination at the gateway and **rate limiting** to mitigate abuse.
 
-## 1. Install 
+- [API Protection with Kong and Keycloak for the N5GEH Platform](#api-protection-with-kong-and-keycloak-for-the-n5geh-platform)
+  - [1. Security framework](#1-security-framework)
+    - [1.1 Identity and Access Management](#11-identity-and-access-management)
+    - [1.2 API gateway and policy enforcement](#12-api-gateway-and-policy-enforcement)
+  - [2. Repository structure](#2-repository-structure)
+  - [3. Prerequisites](#3-prerequisites)
+  - [4. Setup](#4-setup)
+    - [4.1 Configure the environment](#41-configure-the-environment)
+    - [4.2 Generate certificates](#42-generate-certificates)
+    - [4.3 Create the shared network](#43-create-the-shared-network)
+    - [4.4 Build the Kong image](#44-build-the-kong-image)
+    - [4.5 Start the platform](#45-start-the-platform)
+    - [4.6 Start the API protection framework](#46-start-the-api-protection-framework)
+    - [4.7 Keycloak realm import](#47-keycloak-realm-import)
+    - [4.8 Kong declarative configuration](#48-kong-declarative-configuration)
+  - [5. Testing](#5-testing)
+  - [6. Manual Kong / Keycloak configuration (fallback)](#6-manual-kong--keycloak-configuration-fallback)
+    - [6.1 Konga connection](#61-konga-connection)
+    - [6.2 Custom plugins](#62-custom-plugins)
+    - [6.3 Keycloak (GUI)](#63-keycloak-gui)
+  - [7. Custom Kong plugins](#7-custom-kong-plugins)
+  - [8. Open tasks](#8-open-tasks)
+  - [9. Docs](#9-docs)
 
-The source code of all plugins must be in the respective folder, meaning:
-1. luaplugins : This folder contains plugins written in lua language. Currently, the plugin "multi-tenancy" which validates for the _fiware-service header_ in the request against the one in the presented auth token, and the plugin "rbac" which supports _role based access control_ for upstream services are included. The "query-checker" plugin is included - yet, it's still in development. Plugins written in lua language provide the advantage of configuration via a GUI using Konga. Konga is a web GUI for the kong proxy. 
-2. plugins : You can create your own plugins written in JavaScript here.
+---
 
-To use kong, we need to build an image using docker. Simply 1) clone this repo and navigate towards the kong folder and 2) use the command:
+## 1. Security framework
+
+The complete LaTeX description of the security framework is available in
+[`security_framework.tex`](security_framework.tex); the figures referenced below
+live in [`Security_Framework/`](Security_Framework/). The previous framework
+relied on the deprecated *louketo* proxies and a lightweight *traefik* reverse
+proxy. The current framework replaces both with a single **Kong** API gateway
+and an **EMQX** broker, adding multi-tenant support and role-based access
+control.
+
+![Security architecture](Security_Framework/security_architecture.png)
+
+### 1.1 Identity and Access Management
+
+Authentication is delegated to **Keycloak**, which handles user registration,
+credential validation and the issuance of JSON Web Tokens (JWTs). The JWT
+encodes the user's identity, assigned roles and tenant membership.
+
+The user-management model consists of three components (see
+[`keycloak_structure.drawio`](Security_Framework/keycloak_structure.drawio)):
+
+![Keycloak structure](Security_Framework/keycloak_structure.png)
+
+1. **Primary clients** represent the tenants (the individual FIWARE services).
+   Each tenant has one primary client (e.g. `ebcdev1`) with three composite
+   roles: `read`, `write` and `admin` (`write` includes `read`, `admin`
+   includes `write`).
+2. **Auxiliary clients** (`ebcdev1-read`, `ebcdev1-write`, `ebcdev1-admin`)
+   provide isolated service-account credentials for machine-to-machine
+   integration at an exact access level.
+
+   ![Keycloak clients](Security_Framework/keycloak_clients.png)
+3. **Hierarchical groups** — a root `FIWARE` group, a subgroup per tenant
+   tagged with the `fiware-service` attribute, and `read`/`write`/`admin`
+   subgroups mapped to the composite roles.
+
+   ![Keycloak groups](Security_Framework/keycloak_group.png)
+
+### 1.2 API gateway and policy enforcement
+
+All northbound REST APIs are fronted by **Kong**, which enforces policies
+through a chain of plugins:
+
+- **Multi-tenant validation** — a custom plugin checks the `fiware-service`
+  header against the tenant encoded in the JWT and rejects mismatches with
+  `403`.
+- **Role-based access control** — a second plugin compares the HTTP method
+  against the caller's role (`read` for `GET`, `write` for
+  `POST`/`PUT`/`PATCH`, `admin` for `DELETE`).
+- **TLS encryption** — external HTTP is terminated at the gateway; unencrypted
+  requests are rejected. MQTT is secured natively by the EMQX broker.
+- **Authentication logging** — Kong logs all authentication and authorization
+  events for auditability.
+- **Rate limiting** — the official `rate-limiting` plugin caps throughput at
+  `50` req/s, `1,200` req/min and `50,000` req/h.
+
+---
+
+## 2. Repository structure
+
 ```
-docker-compose build kong
+├── api_protection.yaml          # API protection framework stack (Kong, Keycloak, Konga)
+├── platform_v2.yaml             # N5GEH platform stack (Orion, Mongo, IoT-Agent, EMQX, QuantumLeap, Crate, Grafana)
+├── .env.example                 # documented environment variables (copy to .env)
+├── Dockerfile                   # Kong image with the custom Lua plugins
+├── config/
+│   └── kong.yml                 # Kong declarative configuration (services, routes, plugins)
+├── keycloak/
+│   └── realm/
+│       └── kong-realm.json      # Keycloak realm imported on startup
+├── luaplugins/                  # custom Lua plugins (oidc, multi-tenancy, rbac, scope-checker, query-checker)
+├── scripts/
+│   └── generate-certs.sh        # generates the self-signed certificates
+├── tests/                       # pytest suite that verifies the setup
+└── Security_Framework/          # figures + LaTeX source describing the framework
 ```
 
-## 2. Setup 
+---
 
-If kong is run for the first time, it is necessary to perform Database migration using the below commands:
+## 3. Prerequisites
+
+- Docker (with the Compose plugin, `docker compose`) and `docker buildx`
+- `openssl` (to generate certificates)
+- Python 3.8+ (to run the tests)
+
+---
+
+## 4. Setup
+
+### 4.1 Configure the environment
+
+```bash
+cp .env.example .env
+# edit .env and set KEYCLOAK_HOSTNAME to the IP/hostname of your machine
 ```
-docker-compose up -d kong-db
-docker-compose run --rm kong kong migrations bootstrap
-docker-compose run --rm kong kong migrations up (for upgrading from previous version)
+
+Every value in `api_protection.yaml` and `platform_v2.yaml` falls back to a
+sensible default; `.env` only needs to contain the values you want to change.
+See [`.env.example`](.env.example) for the most important variables (the
+remaining ones are defined with `${VAR:-default}` inline in the compose files).
+
+### 4.2 Generate certificates
+
+The compose files mount certificates for Kong, Keycloak and EMQX. Generate a
+local self-signed CA and the service certificates with:
+
+```bash
+./scripts/generate-certs.sh
 ```
-Once the data migrations is performed , you can start the remaining services.
+
+> **TODO(security):** the generated CA is self-signed and intended for local
+> development only. Replace `certs/rootCA.pem` and the leaf certificates with a
+> trusted CA for production.
+
+### 4.3 Create the shared network
+
+Both stacks share an external Docker network so that Kong can reach Orion,
+IoT-Agent and QuantumLeap:
+
+```bash
+docker network create shared-n5geh-net
 ```
-docker-compose up -d kong 
-docker-compose up -d konga
+
+### 4.4 Build the Kong image
+
+```bash
+docker compose -f api_protection.yaml build kong
 ```
-Make sure all the services are up and running.
 
-*Note* : If it is not the first time starting kong and kong-db services , you can clone and run `docker-compose up -d ` directly. 
+### 4.5 Start the platform
 
-## 3. Kong/Konga Configurations
-All the configurations below are done using a GUI for kong called konga. After the inital setup, you need to create an admin account in Konga GUI which can be accessed at `http://<YourIP>:1337` 
+```bash
+docker compose -f platform_v2.yaml up -d
+```
 
-Furthermore, establish a connection between konga and kong when konga is started for the first time. Enter a name and the URL where konga can find kong's admin API according to the picture below.
+### 4.6 Start the API protection framework
 
-![Services](img/konga-connection-setup.PNG)
+Start the databases first and run the Kong migration once:
 
-Once the initial setup is done, you can start to configure your services, routes, and plugins.
+```bash
+docker compose -f api_protection.yaml up -d kong-db keycloak-db
+docker compose -f api_protection.yaml run --rm kong kong migrations bootstrap
+```
 
-### 3.1 Creation of a Service
-Create a new service by clicking the Services button in the left navigation bar. Fill in the necessary details in the GUI. As a example, we create a service for the Orion Context Broker. 
+Then start the remaining services:
 
-![Services](img/services.png)
+```bash
+docker compose -f api_protection.yaml up -d
+```
 
-*Note* : If you are deploying on a local machine it is important to use the ip address of the local machine instead of localhost due to issues with kong.
+Wait for all services to be healthy:
 
-### 3.2 Creation of Routes
-Creating new routes for a given service is fairly simple. Just like creating a new service, a route can be added/created for a service. So click on the Routes tab in the services page (after clicking on a service), in this example orion service. Fill in details for Paths, e.g. */v2/entities* and headers in case you need to check any particular headers. 
-*Note* : fiware-service header will be checked using the multi-tenancy plugin, so there is no need to enter it here.
+```bash
+docker compose -f api_protection.yaml ps
+docker compose -f platform_v2.yaml ps
+```
 
-### 3.3 Open ID Connect (OIDC) plugin for authentication with Keycloak
+> **Note:** on subsequent runs (databases already migrated), a plain
+> `docker compose -f platform_v2.yaml -f api_protection.yaml up -d` is enough.
 
-In this excample, a global plugin will be used in order to validate every incoming request against this plugin. In this case, every request needs to be authenticated against a Keycloak server.
+### 4.7 Keycloak realm import
 
-1. Click on the 'Plugins' tab in the main navigation bar on the left side.
-2. Click on 'ADD GLOBAL PLUGINS'.
-3. Click on 'Other' and then select 'Add Plugin' option on the 'oidc' plugin
-Configure the OIDC plugins as shown in the image below with the configurations as per your client. 
+The Keycloak container automatically imports
+[`keycloak/realm/kong-realm.json`](keycloak/realm/kong-realm.json) on first
+startup (via `--import-realm`). It provisions:
 
-![Keycloak](img/oidc.png)
+- realm `kong`;
+- client `kong` (confidential, secret `kong-client-secret`) used by the OIDC
+  plugin;
+- client `app` (public) for end-user applications;
+- tenant client `ebcdev1` with composite roles `read`/`write`/`admin` and the
+  auxiliary service-account clients `ebcdev1-read`/`-write`/`-admin`;
+- the `FIWARE` → `ebcdev1` → `read`/`write`/`admin` group hierarchy;
+- a demo user `testuser` (password `testpassword`) in the `ebcdev1` `read`
+  group with the `fiware-service=ebcdev1` attribute.
 
+The Keycloak admin console is available at
+`http://<KEYCLOAK_HOSTNAME>:8180` (user/password from `.env`,
+default `admin`/`admin`).
 
-### 3.4 Configure custom plugins
+### 4.8 Kong declarative configuration
 
-To add any other plugin, we follow the same procedure as done before with the OIDC plugin. Here, we give an example on how to add the multi-tenany plugin for the orion service. 
-- Go to the orion service created in Step 3.1, click on the plugins tab on the left side under the selected service.
-- Click on ADD PLUGIN option on the right side, then click on others and select multi-tenancy plugin in the option. There is no need to fill any values as the plugin matches fiware-service header to the same in the Auth Token.
-- **Note**: Make sure to use the OIDC plugin in combination with other plugins to ensure token validity! Only the OIDC plugin checks whether the presented token is valid against the Keycloak server!
+Kong loads [`config/kong.yml`](config/kong.yml) declaratively. It defines:
 
-#### 3.4.1 Configuring Multi-Tenancy Plugin
+- the `oidc` **global** plugin (authenticates every request via Keycloak
+  introspection);
+- the global `rate-limiting` plugin;
+- services + routes for Orion (`/orion`), IoT-Agent (`/iot`) and QuantumLeap
+  (`/quantumleap`), each with the `multi-tenancy` and `rbac` plugins.
 
-You can add the plugin at global, service or at route level. Select the plugin in the 'Add Plugin' section. 
+> **Note:** the OIDC `client_secret` in `config/kong.yml` must match the `kong`
+> client secret in `keycloak/realm/kong-realm.json` (`kong-client-secret`).
 
-`tenant name` (required) field defines the custom header name. It can be renamed as per your custom requirement. This field will be checked against the token presented in the request.
-![MultiTenancy](img/multi-tenancy.png)
+---
 
-Ex: As shown in the image above, we have set the tenant name to `fiware-service`. In the incoming request to kong, it is mandatory to have a request header with name "fiware-service" and the value set in keycloak for the given user. 
+## 5. Testing
 
-*Note*: See section [4.5](#4-keycloak-configurations) for more details to configure keycloak.
+The pytest suite verifies that the platform and the API protection framework
+are set up correctly:
 
-![postman-multi-tenancy](img/postman-multi-tenancy.png)
+```bash
+pip install -r tests/requirements.txt
+pytest tests/ -v
+```
 
+The suite checks that:
 
-#### 3.4.2 Configuring RBAC Plugin
+1. the Kong admin API and Keycloak are reachable;
+2. Keycloak issues a JWT encoding the `fiware-service` tenant;
+3. Kong rejects requests **without** a token (`401`);
+4. Kong allows requests **with** a valid token and matching tenant (`200`);
+5. Kong rejects a mismatched `fiware-service` header (`403`);
+6. Kong rejects a write (`POST`) performed with a read-only token (`403`).
 
-Similar to the multi-tenancy plugin, this plugin can be used at global, service or routes level. 
-When `use custom roles` is disabled, the plugin expects the role in the form *tenantname_role*. Ex: if the tenant name is set to *fiware-service:app*, then the accepted roles are `app_read`, `app_write` and `app_admin`. 
+The test endpoints can be overridden via `.env` (`KONG_ADMIN_URL`,
+`KONG_PROXY_URL`, `KEYCLOAK_URL`, `TEST_TENANT`, ...).
 
-- `tenant name`(required)(String) field defines the custom header name. It can be renamed as per your custom requirement. 
+---
 
-- `use custom roles`(optional)(Bool) is a boolean field that decides whether to include custom roles for rbac. 
+## 6. Manual Kong / Keycloak configuration (fallback)
 
-- `read role` (depends on 'use custom roles')(String) Pre-defined role needed for GET-requests.
-- `write role` (depends on 'use custom roles')(String) Pre-defined role needed for PATCH, PUT, and POST requests.
-- `admin role` (depends on 'use custom roles')(String) Pre-defined role needed for DELETE requests.
-- `include client role` (optional)(Bool) field indicated whether to use client roles or user roles configured in Keycloak.
-- `client name` (depends on include client role)(String) field is used to specify the name of the client. 
-  
-*Note*: See section [4.6](#4-keycloak-configurations) for more details to configure keycloak.
-![RBAC](img/rbac.png)
+The declarative configuration and realm import automate most of the setup. The
+steps below describe how to configure everything manually through the GUIs, in
+case you prefer that approach.
 
-#### 3.4.3 Configuring scope-checker Plugin
+### 6.1 Konga connection
 
-*Note*: This plugin is intended for future use with release of oriod-ld. 
-With this plugin its possible to validate the scopes sent as headers by the client against the permission given to the client in Keycloak. Make sure the headers and token attributes are set with the name as `scopes`
+Konga is available at `http://<YourIP>:1337`. On first start, create an admin
+account and connect Konga to Kong's admin API at `http://kong:8001`.
 
-- `plus allowed` (Boolean) field used to decide plus(+) wildcard entries in scope
-Ex: /fiware/+/temparature allows /fiware/kitchen/temparature, /fiware/room1/temparature ..
-- `hash allowed` (Boolean) field used to decide hash(#) wildcard entries in scope
-Ex: /fiware/kitchen/# allows /fiware/kitchen/temparature , /fiware/kitchen/pressure ..
+![Konga connection](img/konga-connection-setup.PNG)
 
-![scope-checker](img/scope-checker.png)
+### 6.2 Custom plugins
 
-#### 3.4.4 Configuring Query-Checker plugin
-This plugin is used to authorize request path with query 
+The plugins are configured as global/service/route plugins. The `oidc` plugin
+must always be combined with the other plugins to ensure token validity.
 
-- `path` (String) speicfy the full path that has to checked. 
-Ex: /v2/entities/urn:ngsi-ld:Product:010?type=Product
-- `wildcard allowed` (Boolean) field used to include * wildcard as shown in fig
+- **OIDC** — validate every request against Keycloak.
 
-![query-checker](img/query-checker.png)
+  ![OIDC](img/oidc.png)
+- **Multi-Tenancy** — `tenant name` defines the custom header (default
+  `fiware-service`) checked against the token.
 
-## 4. Keycloak Configurations
+  ![Multi-tenancy](img/multi-tenancy.png)
+- **RBAC** — maps HTTP methods to roles. With `use custom roles` disabled the
+  plugin expects roles of the form `<tenant>_<role>` (e.g. `ebcdev1_read`). The
+  realm import uses custom roles + client roles instead.
 
-Note: If you have a running keycloak serverThe images are taken from a previous version 16.1.0. Changes may apply.
-1. Create a new Realm if needed.
-   1. Select the pop-up with `Add realm` option under *Master* on the left top of Keycloak admin page.
-   2. Set the name of the realm, Ex: *kong* and click `create`
-2. Kong client : 
-   1. Create new client with client id `kong` 
-   2. Under client settings, set access type to `confidential`
-   3. Set service accounts `enabled`
-   4. Set valid redirect uris `*` 
-   5. Click on *Credentials*, use the Secret to configure kong in konga as mentioned in section [3.3](#33-open-id-connect-oidc-plugin-for-authentication-with-keycloak)
+  ![RBAC](img/rbac.png)
+- **scope-checker** — validates `scopes` headers (intended for Orion-LD).
 
-   ![kong-keycloak](img/kong-keycloak.png)
-3. App Client:
-   1. Create new client with client id `app`
-   2. Under client settings, set access type to `public` or `confidential`
-   3. Set valid redirect uris `app`
-   
-   ![app-keycloak](img/app-keycloak.png)
-4. Create a user in keycloak to get token using client id `app`
-5. To support *multi-tenancy* plugin, it is necessary to have tenant name in token:
-   1. Click on *Clients* on the left navigation bar
-   2. Click *Mappers* under Clients and *create*
-   3. Set the *Name,User Attribute and Token Claim Name* as to *tenant name*, Ex: `fiware-service` and save
-   4. Use the other follwing settings as shown in the image below.
-   ![fiware-mapper](img/fiware-mapper.png)
-   5. Now go to *Users* in the left navigation bar,*view all users* and select the user.
-   6. Click on *Attributes* and configure for fiware service as shown below.
-   ![user-attribute](img/user-attribute.png)
-   7. The attributes can be multivalued with format *attr1##attr2* Ex: test1##test2
-6. To support *RBAC* plugin, it is necessary to configure roles in keycloak:
-   1. Go to *Roles* in the left navigation bar, select *Add Role*.
-   2. Set the name in the form `tenantname_role`, ex: `test1_read` and save.
-   3. Go to Users and select the user to set roles.
-   4. Select *Role Mapping* under given user and select the roles to be added under *Available Roles* and click *Add selected*.
-   ![user-roles](img/user-roles.png)
-   5. You can also create `client roles` under *Clients* and then select *Roles*, create new role using *Add Role*
-   6. Now under a given user, select *Role Mapping*, choose the client under *Client Roles* and add avaiable roles
-   
+  ![scope-checker](img/scope-checker.png)
+- **query-checker** — authorizes request paths with queries.
 
-## Testing
+  ![query-checker](img/query-checker.png)
 
-After following the above steps, you can test the funcionalities of kong and its plugins using any rest client, e.g. postman or insomnia.
+### 6.3 Keycloak (GUI)
 
-- Get a token from keycloak after creating a user.
-- Use the Authorization header to fill the above recieved token in the format 'Bearer <*token*>'
-- Add necessary headers depending on the plugins in the request and make sure it is put in the user token.
-- Send the request and verify.
+See the images below for the manual realm configuration (realm, `kong` client,
+`app` client, `fiware-service` mapper, roles and user attributes):
 
-*Ex*: To use postman for testing, please check the image below to configure token.
-![token-postman](img/token-postman.png)
+![Kong client](img/kong-keycloak.png)
+![App client](img/app-keycloak.png)
+![fiware-service mapper](img/fiware-mapper.png)
+![User attribute](img/user-attribute.png)
+![User roles](img/user-roles.png)
 
+---
 
-## Docs
+## 7. Custom Kong plugins
 
-- kong-docs-url: https://docs.konghq.com/
-- kong-js-plugins: https://github.com/Kong/docker-kong-js-pdk
-- OIDC-plugin: https://github.com/nokia/kong-oidc
+| Plugin           | Purpose                                                        |
+|------------------|----------------------------------------------------------------|
+| `oidc`           | OpenID Connect authentication / introspection against Keycloak |
+| `multi-tenancy`  | Validates the `fiware-service` header against the JWT          |
+| `rbac`           | Role-based access control based on HTTP method + role          |
+| `scope-checker`  | Validates `scopes` headers (future Orion-LD use)               |
+| `query-checker`  | Authorizes request paths containing a query                    |
+
+The plugins live in [`luaplugins/`](luaplugins/) and are installed into the Kong
+image by the [`Dockerfile`](Dockerfile).
+
+---
+
+## 8. Open tasks
+
+- [ ] **Production certificates** — the self-signed CA generated by
+      `scripts/generate-certs.sh` must be replaced with a trusted CA (see the
+      `TODO(security)` markers).
+- [ ] **Automated Keycloak/Kong provisioning** — the realm import and
+      declarative Kong config cover the happy path. Fully automated
+      provisioning via the Keycloak/Kong admin APIs (e.g. creating arbitrary
+      tenants) is not yet implemented.
+- [ ] **Multi-tenant RBAC** — `config/kong.yml` configures the `rbac` plugin
+      with `client_name: ebcdev1`. For additional tenants the plugin has to be
+      configured per tenant; deriving the client name from the token's tenant
+      would remove this limitation.
+- [ ] **`fiware-service` token claim format** — the multi-tenancy plugin expects
+      the claim as a JSON array; verify the Keycloak mapper emits an array for
+      single-valued attributes.
+
+---
+
+## 9. Docs
+
+- Kong: <https://docs.konghq.com/>
+- OIDC plugin (fork): <https://github.com/nokia/kong-oidc>
+- Keycloak: <https://www.keycloak.org/documentation>
+- FIWARE: <https://www.fiware.org/developers/catalogue/>

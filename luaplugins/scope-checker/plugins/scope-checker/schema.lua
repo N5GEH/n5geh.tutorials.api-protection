@@ -1,7 +1,7 @@
 local typedefs = require "kong.db.schema.typedefs"
 
 return {
-  name = "multi-tenancy",
+  name = "scope-checker",
   fields = {
     {
       config = {

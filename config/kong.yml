@@ -1,8 +1,94 @@
-_format_version: "2.1"
+_format_version: "3.0"
 _transform: true
 
+# -----------------------------------------------------------------------------
+# Kong declarative configuration for the N5GEH API protection framework.
+#
+# Services route to the platform components (started from platform_v2.yaml)
+# over the shared "shared-n5geh-net" network. All services are fronted by the
+# custom plugins (oidc, multi-tenancy, rbac).
+#
+# NOTE: The OIDC plugin `client_secret` must match the `kong` client secret in
+# keycloak/realm/kong-realm.json.
+# -----------------------------------------------------------------------------
+
 services:
-  - name: example-service
-    url: http://localhost:1026/v2/entites
+  - name: orion
+    url: http://orion:1026
+    routes:
+      - name: orion-route
+        paths:
+          - /orion
+        strip_path: true
     plugins:
-      - name: multi-tenancy, rbac, scope-checker, query-checker, oidc
+      - name: multi-tenancy
+        config:
+          tenant_name: fiware-service
+      - name: rbac
+        config:
+          tenant_name: fiware-service
+          use_custom_roles: true
+          read_role: read
+          write_role: write
+          admin_role: admin
+          include_client_role: true
+          client_name: ebcdev1
+
+  - name: iot-agent-json
+    url: http://iot-agent:4041
+    routes:
+      - name: iot-agent-route
+        paths:
+          - /iot
+        strip_path: false
+    plugins:
+      - name: multi-tenancy
+        config:
+          tenant_name: fiware-service
+      - name: rbac
+        config:
+          tenant_name: fiware-service
+          use_custom_roles: true
+          read_role: read
+          write_role: write
+          admin_role: admin
+          include_client_role: true
+          client_name: ebcdev1
+
+  - name: quantumleap
+    url: http://quantumleap:8668
+    routes:
+      - name: quantumleap-route
+        paths:
+          - /quantumleap
+        strip_path: true
+    plugins:
+      - name: multi-tenancy
+        config:
+          tenant_name: fiware-service
+      - name: rbac
+        config:
+          tenant_name: fiware-service
+          use_custom_roles: true
+          read_role: read
+          write_role: write
+          admin_role: admin
+          include_client_role: true
+          client_name: ebcdev1
+
+plugins:
+  - name: oidc
+    config:
+      client_id: kong
+      client_secret: kong-client-secret
+      discovery: http://keycloak:8080/realms/kong/.well-known/openid-configuration
+      introspection_endpoint: http://keycloak:8080/realms/kong/protocol/openid-connect/token/introspect
+      bearer_only: "yes"
+      realm: kong
+      scope: openid
+  - name: rate-limiting
+    config:
+      second: 50
+      minute: 1200
+      hour: 50000
+      policy: local
