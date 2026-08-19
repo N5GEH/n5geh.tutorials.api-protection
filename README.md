@@ -28,6 +28,7 @@ The framework enforces:
     - [4.6 Start the API protection framework](#46-start-the-api-protection-framework)
     - [4.7 Keycloak realm import](#47-keycloak-realm-import)
     - [4.8 Kong declarative configuration](#48-kong-declarative-configuration)
+    - [4.9 TLS / HTTPS introspection](#49-tls--https-introspection)
   - [5. Testing](#5-testing)
   - [6. Manual Kong / Keycloak configuration (fallback)](#6-manual-kong--keycloak-configuration-fallback)
     - [6.1 Konga connection](#61-konga-connection)
@@ -245,6 +246,48 @@ This configures:
 
 You can verify the configuration via Konga UI, available at `http://<IP>:1337`.
 Follow the [Konga instruction](#61-konga-connection) for more details.
+
+### 4.9 TLS / HTTPS introspection
+
+When the OIDC plugin introspects tokens against an **HTTPS** Keycloak endpoint,
+Kong verifies the Keycloak server certificate. The trust anchor for this
+verification is `KONG_LUA_SSL_TRUSTED_CERTIFICATE` (set to
+`/etc/kong/certs/rootCA.pem` in `api_protection.yaml`).
+
+This works end-to-end: Kong turns `KONG_LUA_SSL_TRUSTED_CERTIFICATE` into the
+nginx `lua_ssl_trusted_certificate` directive, which the OIDC plugin's HTTP
+client (`lua-resty-openidc` → `lua-resty-http`) uses during the TLS handshake
+of the introspection call. So the plugin **does** honor that setting.
+
+If you see the error
+
+```
+accessing introspection endpoint (...) failed:
+21: unable to verify the first certificate
+```
+
+it means the certificate served by Keycloak is not signed by the CA that Kong
+trusts. Typical causes and fixes:
+
+1. **Kong was started before the env var / certs existed.** Recreate the Kong
+   container so Kong regenerates its nginx config and combined trust store:
+   ```bash
+   docker compose -f api_protection.yaml up -d --force-recreate kong
+   ```
+2. **The served certificate is not signed by `certs/rootCA.pem`.** Regenerate
+   the certificates and check they match:
+   ```bash
+   ./scripts/generate-certs.sh
+   ./scripts/check-tls.sh <KEYCLOAK_HOSTNAME> <KEYCLOAK_HTTPS_PORT>
+   ```
+3. **The certificate chain has intermediates beyond the verification depth.**
+   Raise `KONG_LUA_SSL_VERIFY_DEPTH` in `.env` (default `5`).
+4. **Development fallback (insecure).** Disable verification by setting
+   `ssl_verify: "no"` on the `oidc` plugin in `config/kong.yml`. Do not use
+   this in production.
+
+Use `./scripts/check-tls.sh` to diagnose which of the above applies.
+
 ---
 
 ## 5. Testing
