@@ -36,7 +36,6 @@ def _load_dotenv(path: Path) -> None:
 
 # Load user configuration first, then fall back to the documented defaults.
 _load_dotenv(ROOT / ".env")
-_load_dotenv(ROOT / ".env.example")
 
 
 def _env(name: str, default: str) -> str:
@@ -45,14 +44,15 @@ def _env(name: str, default: str) -> str:
 
 @pytest.fixture(scope="session")
 def config() -> dict:
-    kong_admin_port = _env("KONG_ADMIN_PORT", "8001")
-    kong_proxy_port = _env("KONG_PROXY_PORT", "8000")
-    keycloak_port = _env("KEYCLOAK_HTTP_PORT", "8180")
+    kong_admin_port = _env("KONG_ADMIN_SSL_PORT", "8444")
+    kong_proxy_port = _env("KONG_PROXY_SSL_PORT", "8443")
+    keycloak_port = _env("KEYCLOAK_HTTPS_PORT", "8543")
+    host_name = _env("KEYCLOAK_HOSTNAME", "127.0.0.1")
 
     return {
-        "kong_admin_url": _env("KONG_ADMIN_URL", f"http://127.0.0.1:{kong_admin_port}"),
-        "kong_proxy_url": _env("KONG_PROXY_URL", f"http://127.0.0.1:{kong_proxy_port}"),
-        "keycloak_url": _env("KEYCLOAK_URL", f"http://127.0.0.1:{keycloak_port}"),
+        "kong_admin_url": _env("KONG_ADMIN_URL", f"https://{host_name}:{kong_admin_port}"),
+        "kong_proxy_url": _env("KONG_PROXY_URL", f"https://{host_name}:{kong_proxy_port}"),
+        "keycloak_url": _env("KEYCLOAK_URL", f"https://{host_name}:{keycloak_port}"),
         "realm": _env("KEYCLOAK_REALM", "kong"),
         "client_id": _env("OIDC_CLIENT_ID", "kong"),
         "client_secret": _env("OIDC_CLIENT_SECRET", "kong-client-secret"),
