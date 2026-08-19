@@ -4,6 +4,8 @@ This repository contains the **API protection framework** for the N5GEH
 platform. It shows how to protect the platform's northbound REST APIs (Orion
 Context Broker, IoT-Agent, QuantumLeap) using **Kong** as an API gateway / PEP
 proxy with **Keycloak** for authentication and authorization.
+For this reason, all the northbound APIs are fronted by Kong, and ports like
+`1026` (Orion) or `4041` (IoT-Agent) are not exposed externally.
 
 The framework enforces:
 
