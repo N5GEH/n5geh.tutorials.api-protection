@@ -41,12 +41,32 @@ fi
 # 1. Root CA
 # ---------------------------------------------------------------------------
 if [[ ! -f "$CERT_DIR/rootCA.pem" ]]; then
-  openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
-    -keyout "$CERT_DIR/rootCA.key" \
+  # 1. Generate the private key
+  openssl genrsa -out "$CERT_DIR/rootCA.key" 4096
+
+  # 2. Generate a Certificate Signing Request (CSR)
+  openssl req -new -key "$CERT_DIR/rootCA.key" \
+    -out "$CERT_DIR/rootCA.csr" \
+    -subj "/CN=N5GEH Tutorial Root CA"
+
+  # 3. Create an explicit extensions file to avoid Ubuntu config duplication
+  cat > "$CERT_DIR/rootCA.ext" <<EOF
+basicConstraints=critical,CA:TRUE
+keyUsage=critical,keyCertSign,cRLSign
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
+EOF
+
+  # 4. Self-sign the CSR to create the Root CA
+  openssl x509 -req -in "$CERT_DIR/rootCA.csr" \
+    -signkey "$CERT_DIR/rootCA.key" \
+    -days 3650 -sha256 \
     -out "$CERT_DIR/rootCA.pem" \
-    -subj "/CN=N5GEH Tutorial Root CA" \
-    -addext "keyUsage=critical,keyCertSign,cRLSign" \
-    -addext "basicConstraints=critical,CA:TRUE"
+    -extfile "$CERT_DIR/rootCA.ext"
+
+  # Cleanup temporary files
+  rm -f "$CERT_DIR/rootCA.csr" "$CERT_DIR/rootCA.ext"
+
   echo "Generated root CA."
 else
   echo "Root CA already exists, skipping."
@@ -76,6 +96,8 @@ basicConstraints=CA:FALSE
 keyUsage=digitalSignature,keyEncipherment
 extendedKeyUsage=serverAuth,clientAuth
 subjectAltName=$san_list
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
 EOF
 
   openssl x509 -req -in "$out_dir/$name.csr" \
