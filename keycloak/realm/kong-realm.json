@@ -56,7 +56,7 @@
     "client": {
       "ebcdev1": [
         {
-          "name": "read",
+          "name": "ebcdev1-read",
           "description": "Read-only access to the ebcdev1 tenant",
           "composite": false,
           "clientRole": true,
@@ -64,13 +64,13 @@
           "attributes": {}
         },
         {
-          "name": "write",
+          "name": "ebcdev1-write",
           "description": "Read and write access to the ebcdev1 tenant",
           "composite": true,
           "composites": {
             "client": {
               "ebcdev1": [
-                "read"
+                "ebcdev1-read"
               ]
             }
           },
@@ -79,13 +79,13 @@
           "attributes": {}
         },
         {
-          "name": "admin",
+          "name": "ebcdev1-admin",
           "description": "Full access to the ebcdev1 tenant",
           "composite": true,
           "composites": {
             "client": {
               "ebcdev1": [
-                "write"
+                "ebcdev1-write"
               ]
             }
           },
@@ -116,37 +116,37 @@
           "clientRoles": {},
           "subGroups": [
             {
-              "name": "read",
-              "path": "/FIWARE/ebcdev1/read",
+              "name": "ebcdev1-read",
+              "path": "/FIWARE/ebcdev1/ebcdev1-read",
               "attributes": {},
               "realmRoles": [],
               "clientRoles": {
                 "ebcdev1": [
-                  "read"
+                  "ebcdev1-read"
                 ]
               },
               "subGroups": []
             },
             {
-              "name": "write",
-              "path": "/FIWARE/ebcdev1/write",
+              "name": "ebcdev1-write",
+              "path": "/FIWARE/ebcdev1/ebcdev1-write",
               "attributes": {},
               "realmRoles": [],
               "clientRoles": {
                 "ebcdev1": [
-                  "write"
+                  "ebcdev1-write"
                 ]
               },
               "subGroups": []
             },
             {
-              "name": "admin",
-              "path": "/FIWARE/ebcdev1/admin",
+              "name": "ebcdev1-admin",
+              "path": "/FIWARE/ebcdev1/ebcdev1-admin",
               "attributes": {},
               "realmRoles": [],
               "clientRoles": {
                 "ebcdev1": [
-                  "admin"
+                  "ebcdev1-admin"
                 ]
               },
               "subGroups": []
@@ -440,7 +440,7 @@
         }
       ],
       "groups": [
-        "/FIWARE/ebcdev1/read"
+        "/FIWARE/ebcdev1/ebcdev1-read"
       ],
       "realmRoles": [
         "default-roles-kong"

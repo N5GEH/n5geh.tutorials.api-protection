@@ -46,7 +46,7 @@ services:
       KONG_PG_DATABASE:      ${KONG_DB_NAME:-api-gw}
       KONG_PG_USER:          ${KONG_DB_USER:-kong}
       KONG_PG_PASSWORD:      ${KONG_DB_PASSWORD:-kong}
-      KONG_DECLARATIVE_CONFIG: /etc/kong/declarative/kong.yml
+      # KONG_DECLARATIVE_CONFIG: /etc/kong/declarative/kong.yml THIS DOES NOT WORK WITH DATABASE MODE, ONLY WITH DBLESS MODE
       # Show all output in the terminal when running with Docker
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
       KONG_ADMIN_ERROR_LOG: /dev/stderr

@@ -40,7 +40,7 @@ services:
       - name: iot-agent-route
         paths:
           - /iot
-        strip_path: false
+        strip_path: true
     plugins:
       - name: multi-tenancy
         config:

@@ -211,18 +211,29 @@ startup (via `--import-realm`). It provisions:
 - client `app` (public) for end-user applications;
 - tenant client `ebcdev1` with composite roles `read`/`write`/`admin` and the
   auxiliary service-account clients `ebcdev1-read`/`-write`/`-admin`;
-- the `FIWARE` → `ebcdev1` → `read`/`write`/`admin` group hierarchy;
-- a demo user `testuser` (password `testpassword`) in the `ebcdev1` `read`
+- the `FIWARE` → `ebcdev1` → `ebcdev1-read`/`ebcdev1-write`/`ebcdev1-admin` group hierarchy;
+- a demo user `testuser` (password `testpassword`) in the `ebcdev1-read`
   group with the `fiware-service=ebcdev1` attribute.
 
 The Keycloak admin console is available at
-`http://<KEYCLOAK_HOSTNAME>:8180` (user/password from `.env`,
-default `admin`/`admin`).
+`https://<KEYCLOAK_HOSTNAME>:<KEYCLOAK_HTTPS_PORT>` (e.g., `https://example.com:8543`).
+User/password from `.env`, default `admin`/`admin`.
 
-### 4.8 Kong declarative configuration
+### 4.8 Kong configuration
 
-Kong loads [`config/kong.yml`](config/kong.yml) declaratively. It defines:
+Load Kong configuration ([`config/kong.yml`](config/kong.yml)) with `db-import`:
 
+````bash
+docker exec -it kong kong config db_import /etc/kong/declarative/kong.yml
+````
+
+After the import, Kong automatically reloads the configuration and needs to be restarted to apply the changes:
+
+```bash
+docker restart kong
+```
+
+This configures:
 - the `oidc` **global** plugin (authenticates every request via Keycloak
   introspection);
 - the global `rate-limiting` plugin;
@@ -232,6 +243,8 @@ Kong loads [`config/kong.yml`](config/kong.yml) declaratively. It defines:
 > **Note:** the OIDC `client_secret` in `config/kong.yml` must match the `kong`
 > client secret in `keycloak/realm/kong-realm.json` (`kong-client-secret`).
 
+You can verify the configuration via Konga UI, available at `http://<IP>:1337`.
+Follow the [Konga instruction](#61-konga-connection) for more details.
 ---
 
 ## 5. Testing
@@ -243,6 +256,11 @@ are set up correctly:
 pip install -r tests/requirements.txt
 pytest tests/ -v
 ```
+
+> **Note:** if you run the tests from a different machine than the one hosting the platform,
+> you must create a `.env` file as well. Set the `KONG_PROXY_URL` and `KEYCLOAK_URL` environment 
+> variables to the correct hostnames.
+
 
 The suite checks that:
 
