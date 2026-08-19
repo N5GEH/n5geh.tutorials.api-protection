@@ -12,6 +12,10 @@ from pathlib import Path
 
 import pytest
 import requests
+import urllib3
+
+# Suppress InsecureRequestWarning when bypassing SSL verification
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -59,13 +63,25 @@ def config() -> dict:
 
 
 @pytest.fixture(scope="session")
-def access_token(config: dict) -> str:
+def http_client() -> requests.Session:
+    """Configured requests session bypassing SSL certificate validation.
+
+    To trust a specific self-signed CA cert instead, set:
+        session.verify = '/path/to/self-signed-ca.crt'
+    """
+    session = requests.Session()
+    session.verify = False
+    return session
+
+
+@pytest.fixture(scope="session")
+def access_token(config: dict, http_client: requests.Session) -> str:
     """Obtain a JWT from Keycloak using the resource-owner password grant."""
     url = (
         f"{config['keycloak_url']}/realms/{config['realm']}"
         "/protocol/openid-connect/token"
     )
-    response = requests.post(
+    response = http_client.post(
         url,
         data={
             "grant_type": "password",
