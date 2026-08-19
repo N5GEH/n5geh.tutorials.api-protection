@@ -28,9 +28,9 @@ services:
         config:
           tenant_name: fiware-service
           use_custom_roles: true
-          read_role: read
-          write_role: write
-          admin_role: admin
+          read_role: ebcdev1-read
+          write_role: ebcdev1-write
+          admin_role: ebcdev1-admin
           include_client_role: true
           client_name: ebcdev1
 
@@ -49,9 +49,9 @@ services:
         config:
           tenant_name: fiware-service
           use_custom_roles: true
-          read_role: read
-          write_role: write
-          admin_role: admin
+          read_role: ebcdev1-read
+          write_role: ebcdev1-write
+          admin_role: ebcdev1-admin
           include_client_role: true
           client_name: ebcdev1
 
@@ -70,9 +70,9 @@ services:
         config:
           tenant_name: fiware-service
           use_custom_roles: true
-          read_role: read
-          write_role: write
-          admin_role: admin
+          read_role: ebcdev1-read
+          write_role: ebcdev1-write
+          admin_role: ebcdev1-admin
           include_client_role: true
           client_name: ebcdev1
 
