@@ -81,8 +81,8 @@ plugins:
     config:
       client_id: kong
       client_secret: kong-client-secret
-      discovery: http://keycloak:8080/realms/kong/.well-known/openid-configuration
-      introspection_endpoint: http://keycloak:8080/realms/kong/protocol/openid-connect/token/introspect
+      discovery: https://keycloak:8443/realms/kong/.well-known/openid-configuration
+      introspection_endpoint: https://keycloak:8443/realms/kong/protocol/openid-connect/token/introspect
       bearer_only: "yes"
       realm: kong
       scope: openid
