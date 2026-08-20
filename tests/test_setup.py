@@ -49,11 +49,40 @@ def test_request_with_valid_token_is_allowed(config, access_token, http_client):
         headers={
             "Authorization": f"Bearer {access_token}",
             "fiware-service": config["tenant"],
+            "fiware-servicepath": "/",
         },
         timeout=30,
     )
     assert response.status_code == 200
 
+
+def test_request_with_valid_token_iot(config, access_token, http_client):
+    url = f"{config['kong_proxy_url']}/iot/iot/devices"
+    response = http_client.get(
+        url,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "fiware-service": config["tenant"],
+            "fiware-servicepath": "/",
+        },
+        timeout=30,
+    )
+    assert response.status_code == 200
+
+
+def test_request_with_valid_token_ql(config, access_token, http_client):
+    url = f"{config['kong_proxy_url']}/quantumleap/v2/entities"
+    response = http_client.get(
+        url,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "fiware-service": config["tenant"],
+            "fiware-servicepath": "/",
+        },
+        timeout=30,
+    )
+    # success or no records found
+    assert response.status_code in [200, 404]
 
 def test_multi_tenancy_rejects_wrong_tenant(config, access_token, http_client):
     url = f"{config['kong_proxy_url']}/orion/v2/entities"
