@@ -292,16 +292,16 @@ Use `./scripts/check-tls.sh` to diagnose which of the above applies.
 ## 5. Testing
 
 When the platform and the API protection framework function correctly, the platform's northbound APIs are now only reachable through Kong:
-- `http://<KONG_PROXY_URL>/orion/` (Orion)
-  - entities: `http://<KONG_PROXY_URL>/orion/v2/entities`
-  - subscriptions: `http://<KONG_PROXY_URL>/orion/v2/subscriptions`
+- `<KONG_PROXY_URL>/orion/` (Orion)
+  - entities: `<KONG_PROXY_URL>/orion/v2/entities`
+  - subscriptions: `<KONG_PROXY_URL>/orion/v2/subscriptions`
   - etc.
-- `http://<KONG_PROXY_URL>/iot/` (IoT-Agent)
-  - devices: `http://<KONG_PROXY_URL>/iot/iot/devices`
-  - service groups: `http://<KONG_PROXY_URL>/iot/iot/services`
+- `<KONG_PROXY_URL>/iot/` (IoT-Agent)
+  - devices: `<KONG_PROXY_URL>/iot/iot/devices`
+  - service groups: `<KONG_PROXY_URL>/iot/iot/services`
   - etc.
-- `http://<KONG_PROXY_URL>/quantumleap/` (QuantumLeap)
-  - entities: `http://<KONG_PROXY_URL>/quantumleap/v2/entities`
+- `<KONG_PROXY_URL>/quantumleap/` (QuantumLeap)
+  - entities: `<KONG_PROXY_URL>/quantumleap/v2/entities`
   - etc.
 
 > **Note:** The security framework does not check the `fiware-servicepath` header, but it is still **required** by most of the northbound APIs. By default, you can set `fiware-servicepath=/` in your requests.
