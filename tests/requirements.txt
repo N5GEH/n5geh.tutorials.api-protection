@@ -1,0 +1,4 @@
+# Python dependencies for the tutorial test suite.
+# Install with: pip install -r tests/requirements.txt
+pytest>=7.0
+requests>=2.28

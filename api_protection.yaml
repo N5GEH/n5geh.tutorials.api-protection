@@ -1,0 +1,140 @@
+version: "3.4"
+
+networks: 
+  kong-net:
+  keycloak-net:
+  shared-n5geh-net:
+    external: true
+  
+volumes:
+  kong-datastore:
+    driver: local
+  keycloak-datastore:
+    driver: local 
+    
+services:
+  kong-db:
+    image: postgres:11-alpine
+    container_name: kong-db
+    volumes:
+      - kong-datastore:/var/lib/postgresql/data
+    networks:
+      - kong-net
+    ports:
+      - "${KONG_DB_PORT:-15432}:5432"
+    environment:
+      POSTGRES_DB:       ${KONG_DB_NAME:-api-gw}
+      POSTGRES_USER:     ${KONG_DB_USER:-kong}
+      POSTGRES_PASSWORD: ${KONG_DB_PASSWORD:-kong}
+  
+  kong:
+    build: .
+    user: "${KONG_USER:-kong}"
+    depends_on:
+      - kong-db
+    container_name: kong
+    volumes:
+      - ./config:/etc/kong/declarative
+      - ./certs/kong/kong.crt:/etc/kong/certs/server.crt:ro
+      - ./certs/kong/kong.key:/etc/kong/certs/server.key:ro
+      - ./certs/rootCA.pem:/etc/kong/certs/rootCA.pem:ro
+    environment:
+      # Use the config defined in config/kong.yml
+      KONG_DATABASE:         postgres
+      KONG_PG_HOST:          kong-db
+      KONG_PG_PORT:          5432
+      KONG_PG_DATABASE:      ${KONG_DB_NAME:-api-gw}
+      KONG_PG_USER:          ${KONG_DB_USER:-kong}
+      KONG_PG_PASSWORD:      ${KONG_DB_PASSWORD:-kong}
+      # KONG_DECLARATIVE_CONFIG: /etc/kong/declarative/kong.yml THIS DOES NOT WORK WITH DATABASE MODE, ONLY WITH DBLESS MODE
+      # Show all output in the terminal when running with Docker
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_PLUGINS: bundled,oidc,multi-tenancy,rbac,scope-checker,query-checker
+      KONG_PROXY_LISTEN:     0.0.0.0:8000, 0.0.0.0:8443 ssl
+      KONG_ADMIN_LISTEN:     0.0.0.0:8001, 0.0.0.0:8444 ssl
+      KONG_SSL_CERT:         /etc/kong/certs/server.crt
+      KONG_SSL_CERT_KEY:     /etc/kong/certs/server.key
+      KONG_ADMIN_SSL_CERT:   /etc/kong/certs/server.crt
+      KONG_ADMIN_SSL_CERT_KEY: /etc/kong/certs/server.key
+      KONG_LUA_SSL_TRUSTED_CERTIFICATE: /etc/kong/certs/rootCA.pem
+    ports:
+      - "${KONG_PROXY_PORT:-8000}:8000"
+      - "${KONG_ADMIN_PORT:-8001}:8001" # Admin API
+      - "${KONG_PROXY_SSL_PORT:-8443}:8443" # Listener  (SSL)
+      - "${KONG_ADMIN_SSL_PORT:-8444}:8444" # Admin API (SSL)
+    networks:
+      - kong-net
+      - shared-n5geh-net
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    restart: on-failure
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 65536
+    
+  konga:
+    image: pantsel/konga:0.14.9
+    depends_on:
+      - kong
+    container_name: konga
+    networks:
+      - kong-net
+    ports:
+      - "${KONGA_PORT:-1337}:1337" # konga port
+    environment:
+      DB_ADAPTER: postgres
+      DB_HOST: kong-db
+      DB_PORT: '5432'
+      DB_USER: ${KONG_DB_USER:-kong}
+      DB_PASSWORD: ${KONG_DB_PASSWORD:-kong}
+      DB_DATABASE: ${KONG_DB_NAME:-api-gw}
+      NODE_ENV: development
+      
+  keycloak-db:
+    image: postgres:14-alpine
+    volumes: 
+      - keycloak-datastore:/var/lib/postgresql/data
+    networks:
+      - keycloak-net
+    ports:
+      - "${KEYCLOAK_DB_PORT:-25432}:5432"
+    environment:
+      POSTGRES_DB:       ${KEYCLOAK_DB_NAME:-keycloak}
+      POSTGRES_USER:     ${KEYCLOAK_DB_USER:-keycloak}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-password}
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0.6
+    depends_on:
+      - keycloak-db
+    networks:
+      - keycloak-net
+      - kong-net
+    ports:
+      - "${KEYCLOAK_HTTP_PORT:-8180}:8080"
+      - "${KEYCLOAK_HTTPS_PORT:-8543}:8443"   # Add HTTPS port
+    volumes:
+      - ./certs/keycloak/keycloak.crt:/opt/keycloak/conf/server.crt:ro
+      - ./certs/keycloak/keycloak.key:/opt/keycloak/conf/server.key:ro
+      - ${KEYCLOAK_REALM_IMPORT:-./keycloak/realm/kong-realm.json}:/opt/keycloak/data/import/kong-realm.json:ro
+    environment:
+      KC_DB:              postgres
+      KC_DB_URL:          jdbc:postgresql://keycloak-db:5432/${KEYCLOAK_DB_NAME:-keycloak}
+      KC_DB_USERNAME:     ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD:     ${KEYCLOAK_DB_PASSWORD:-password}
+      KEYCLOAK_ADMIN:     ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HTTPS_CERTIFICATE_FILE: /opt/keycloak/conf/server.crt
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /opt/keycloak/conf/server.key
+      KC_HOSTNAME:        ${KEYCLOAK_HOSTNAME:-127.0.0.1}
+      KC_HOSTNAME_PORT:   ${KEYCLOAK_HTTPS_PORT:-8543}
+      KC_HOSTNAME_STRICT: ${KEYCLOAK_HOSTNAME_STRICT:-false}
+      KC_HOSTNAME_STRICT_HTTPS: ${KEYCLOAK_HOSTNAME_STRICT_HTTPS:-false}
+    command: start --import-realm

@@ -1,0 +1,17 @@
+# Local environment configuration (contains secrets)
+.env
+
+# Generated certificates (run scripts/generate-certs.sh)
+/certs/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# IDE
+.idea/
+
+# Konga / node
+node_modules/
